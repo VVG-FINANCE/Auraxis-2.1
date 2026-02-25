@@ -149,3 +149,4 @@ for i, par in enumerate(pares_disponiveis):
 
 # Atualização automática (30s)
 st.caption("Atualizando dados a cada 30 segundos...")
+
