@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Auraxis 2.1", layout="wide")
-st.title("Auraxis 2.1 — Simulator Fusion Layer (Final Corrigido)")
+st.title("Auraxis 2.1 — Simulator Fusion Layer")
 
 # -------------------------
 # Configurações do Usuário
@@ -45,19 +45,23 @@ periodo = st.sidebar.selectbox("Timeframe:", ["1m", "5m"])
 # -------------------------
 def fetch_yahoo_data(symbol, period="7d", interval="1m"):
     df = yf.download(symbol, period=period, interval=interval)
+    if df.empty:
+        return pd.DataFrame()
     df.reset_index(inplace=True)
-    df = df[['Datetime','Open','High','Low','Close']]
+    # Garante que as colunas existam antes de filtrar
+    cols_needed = ['Datetime','Open','High','Low','Close']
+    df = df[[c for c in cols_needed if c in df.columns]]
     return df
 
 def candle_valido(candle):
-    return candle['High'] > 0 and candle['Low'] > 0 and candle['Open'] > 0 and candle['Close'] > 0
+    return all(candle[col] > 0 for col in ['High', 'Low', 'Open', 'Close'])
 
 def compute_confidence(candle):
     body = abs(candle['Close'] - candle['Open'])
     total_range = candle['High'] - candle['Low']
     if total_range == 0:
         return 0.3
-    return min(0.85, body/total_range*0.85 + 0.15)
+    return float(min(0.85, body/total_range*0.85 + 0.15))
 
 def compute_regime(df):
     df['diff'] = df['Close'] - df['Open']
@@ -85,7 +89,7 @@ def simulate_SL_TP(candle, profile):
     range_ = candle['High'] - candle['Low']
     sl = candle['Close'] - pct*range_
     tp = candle['Close'] + pct*range_
-    return sl, tp
+    return float(sl), float(tp)
 
 def simulate_sweep_IPI(df):
     ipi = []
@@ -93,7 +97,7 @@ def simulate_sweep_IPI(df):
         if i == 0:
             ipi.append(0.5)
         else:
-            delta = df['Close'][i] - df['Close'][i-1]
+            delta = float(df['Close'].iloc[i] - df['Close'].iloc[i-1])
             ipi_val = 0.5 + np.tanh(delta*100) / 2
             ipi.append(max(0, min(1, ipi_val)))
     df['IPI'] = ipi
@@ -108,79 +112,40 @@ for i, par in enumerate(pares_disponiveis):
     with tabs[i]:
         st.subheader(f"Par: {par.replace('=X','')}")
         df = fetch_yahoo_data(par, period="7d", interval=periodo)
+        
+        if df.empty or len(df) < 2:
+            st.warning("Aguardando dados do mercado ou mercado fechado.")
+            continue
+
         df = df[df.apply(candle_valido, axis=1)]
         df['confidence'] = df.apply(lambda x: compute_confidence(x), axis=1)
         df['regime'] = compute_regime(df)
         df = simulate_sweep_IPI(df)
         
-        if len(df) == 0:
-            st.warning("Sem dados disponíveis no momento para este par.")
-            continue
-
         ultimo_candle = df.iloc[-1]
         fragmentos = compute_fragmentation(ultimo_candle)
         sl, tp = simulate_SL_TP(ultimo_candle, perfil_trader)
 
-        # -------------------------
-        # Gráfico Profissional
-        # -------------------------
+        # Gráfico
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
             x=df['Datetime'],
             open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
-            name=f"{par} {periodo}"
+            name=par
         ))
 
-        # Overlay Confidence
-        colors = ["rgba(0,255,0,0.2)" if c>0.7 else "rgba(255,255,0,0.2)" if c>0.5 else "rgba(255,0,0,0.2)" for c in df['confidence']]
-        for j, color in enumerate(colors):
-            fig.add_vrect(x0=df['Datetime'][j], x1=df['Datetime'][j], fillcolor=color, opacity=0.2, line_width=0)
+        # SL/TP Lines
+        fig.add_hline(y=sl, line=dict(color='red', width=1, dash='dash'))
+        fig.add_hline(y=tp, line=dict(color='green', width=1, dash='dash'))
 
-        # Overlay fragmentos
-        for zone, (low_z, high_z) in fragmentos.items():
-            fig.add_hrect(y0=low_z, y1=high_z, fillcolor="blue", opacity=0.1, line_width=0)
-
-        # Overlay Sweep/IPI
-        fig.add_trace(go.Scatter(
-            x=df['Datetime'], y=df['Close']*df['IPI'], mode='lines', line=dict(color='orange', width=1), name='Sweep/IPI'
-        ))
-
-        # SL/TP
-        fig.add_hline(y=sl, line=dict(color='red', width=1, dash='dash'), annotation_text="SL", annotation_position="bottom right")
-        fig.add_hline(y=tp, line=dict(color='green', width=1, dash='dash'), annotation_text="TP", annotation_position="top right")
-
-        fig.update_layout(title=f"Auraxis 2.1 — {par.replace('=X','')} ({periodo})",
-                          xaxis_title="Tempo", yaxis_title="Preço",
-                          xaxis_rangeslider_visible=False,
-                          template="plotly_dark",
-                          legend=dict(orientation="h", y=1.05))
+        fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False)
         st.plotly_chart(fig, use_container_width=True)
 
-        # -------------------------
-        # Simulador Interativo
-        # -------------------------
-        st.subheader("Simulador de Operações")
-        if simulador_tipo != "Automático":
-            col1, col2 = st.columns(2)
-            with col1:
-                aceito = st.button(f"Aceitar Entrada {par}")
-            with col2:
-                descarto = st.button(f"Descartar Entrada {par}")
-            if aceito:
-                st.success(f"Entrada aceita para {par} com SL={sl:.5f} e TP={tp:.5f}")
-            elif descarto:
-                st.warning("Entrada descartada")
+        # Simulador
+        st.write(f"**Confiança Atual:** {ultimo_candle['confidence']:.2%}")
+        col1, col2 = st.columns(2)
+        with col1: st.button(f"Comprar {par}", key=f"buy_{par}")
+        with col2: st.button(f"Vender {par}", key=f"sell_{par}")
 
-        # -------------------------
-        # Histórico e Alavancagem
-        # -------------------------
-        st.subheader("Histórico Recente (Últimos 7 dias)")
-        st.dataframe(df[['Datetime','Open','High','Low','Close','confidence','regime','IPI']].tail(50))
-        st.subheader("Informação Orientativa de Alavancagem")
-        st.info(f"Perfil '{perfil_trader}': alavancagem sugerida {leverage_guide[perfil_trader]}")
-        st.caption("Apenas indicativa. Use seu critério para aplicar em conta real.")
-
-# -------------------------
 # Atualização automática (30s)
-# -------------------------
-st.experimental_rerun()
+st.caption("Atualizando dados a cada 30 segundos...")
