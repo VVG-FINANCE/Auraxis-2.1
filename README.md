@@ -1,2 +1,2 @@
-# Auraxis-2.1
-Radar e simulador Forex aproximado
+# Auraxis-2.2
+Radar e simulador institucional forex
