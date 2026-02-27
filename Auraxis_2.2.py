@@ -1,6 +1,5 @@
 # =========================
-# Auraxis 2.1 Final Revisado
-# Multi-Par + Microtrajectória + Sweep/IPI + Layout Profissional
+# Auraxis 2.2 Final para GitHub + Streamlit
 # =========================
 
 import streamlit as st
@@ -8,10 +7,9 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Auraxis 2.1", layout="wide")
-st.title("Auraxis 2.1 — Simulator Fusion Layer (Final Revisado)")
+st.set_page_config(page_title="Auraxis 2.2", layout="wide")
+st.title("Auraxis 2.2 — Simulator Fusion Layer")
 
 # -------------------------
 # Configurações do Usuário
@@ -149,7 +147,7 @@ for i, par in enumerate(pares_disponiveis):
         fig.add_hline(y=sl, line=dict(color='red', width=1, dash='dash'), annotation_text="SL", annotation_position="bottom right")
         fig.add_hline(y=tp, line=dict(color='green', width=1, dash='dash'), annotation_text="TP", annotation_position="top right")
 
-        fig.update_layout(title=f"Auraxis 2.1 — {par.replace('=X','')} ({periodo})",
+        fig.update_layout(title=f"Auraxis 2.2 — {par.replace('=X','')} ({periodo})",
                           xaxis_title="Tempo", yaxis_title="Preço",
                           xaxis_rangeslider_visible=False,
                           template="plotly_dark",
@@ -179,8 +177,3 @@ for i, par in enumerate(pares_disponiveis):
         st.subheader("Informação Orientativa de Alavancagem")
         st.info(f"Perfil '{perfil_trader}': alavancagem sugerida {leverage_guide[perfil_trader]}")
         st.caption("Apenas indicativa. Use seu critério para aplicar em conta real.")
-
-# -------------------------
-# Atualização automática (30s)
-# -------------------------
-st.run()
